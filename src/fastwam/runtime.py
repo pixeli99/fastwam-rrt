@@ -91,6 +91,7 @@ def create_fastwam(
     redirect_common_files: bool = True,
     model_dtype: torch.dtype = torch.bfloat16,
     device: str = "cuda",
+    rrt=None,
 ):
     from .models.wan22.fastwam import FastWAM
 
@@ -134,7 +135,7 @@ def create_fastwam(
     if not isinstance(loss, dict):
         raise ValueError(f"`loss` must be dict-like, got {type(loss)}")
 
-    return FastWAM.from_wan22_pretrained(
+    model = FastWAM.from_wan22_pretrained(
         device=device,
         torch_dtype=model_dtype,
         model_id=model_id,
@@ -158,6 +159,20 @@ def create_fastwam(
         loss_lambda_action=float(loss.get("lambda_action", 1.0)),
         compile_training_denoise=bool(compile_training_denoise),
     )
+    if rrt is not None:
+        from .models.wan22.rrt import apply_rrt
+
+        if isinstance(rrt, DictConfig):
+            rrt = OmegaConf.to_container(rrt, resolve=True)
+        model.rrt_info = apply_rrt(
+            model.video_expert,
+            num_loops=int(rrt["num_loops"]),
+            init=str(rrt["init"]),
+            lora_rank=int(rrt.get("lora_rank", 0)),
+            # Eval builds a random model and overwrites it from the checkpoint; SVD would be wasted.
+            svd_init=not bool(skip_dit_load_from_pretrain),
+        )
+    return model
 
 
 def create_fastwam_joint(

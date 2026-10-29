@@ -3,6 +3,7 @@ import json
 import inspect
 import os
 import re
+import shutil
 from math import ceil
 from pathlib import Path
 import time
@@ -41,6 +42,8 @@ class Wan22Trainer:
         self.max_steps = int(max_steps) if max_steps is not None else None
         self.log_every = int(cfg.log_every)
         self.save_every = int(cfg.save_every)
+        # Older weight/state snapshots beyond this count are deleted after each save (None keeps all).
+        self.keep_last_checkpoints = cfg.get("keep_last_checkpoints", None)
         self.eval_every = int(cfg.eval_every)
         self.eval_num_inference_steps = int(cfg.eval_num_inference_steps)
         self.gradient_accumulation_steps = int(cfg.gradient_accumulation_steps)
@@ -617,9 +620,19 @@ class Wan22Trainer:
         self.accelerator.save_state(output_dir=state_path)
         if self.accelerator.is_main_process:
             self._save_trainer_state(state_path)
+            if self.keep_last_checkpoints is not None:
+                self._prune_old_checkpoints(int(self.keep_last_checkpoints))
         self.accelerator.wait_for_everyone()
 
         return {"weights_path": ckpt_path, "state_path": state_path}
+
+    def _prune_old_checkpoints(self, keep: int):
+        state_tags = sorted(d for d in os.listdir(self.state_dir) if re.fullmatch(r"step_\d+", d))
+        for tag in state_tags[:-keep]:
+            shutil.rmtree(os.path.join(self.state_dir, tag), ignore_errors=True)
+        weight_files = sorted(f for f in os.listdir(self.weights_dir) if re.fullmatch(r"step_\d+\.pt", f))
+        for name in weight_files[:-keep]:
+            os.remove(os.path.join(self.weights_dir, name))
 
     def load_training_state(self, state_dir: str):
         self.accelerator.load_state(input_dir=state_dir)

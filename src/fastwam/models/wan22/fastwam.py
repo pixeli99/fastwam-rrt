@@ -1211,7 +1211,11 @@ class FastWAM(torch.nn.Module):
     def load_checkpoint(self, path, optimizer=None):
         payload = torch.load(path, map_location="cpu")
         if "mot" in payload:
-            self.mot.load_state_dict(payload["mot"], strict=False)
+            result = self.mot.load_state_dict(payload["mot"], strict=False)
+            if getattr(self, "rrt_info", None) is not None and (result.missing_keys or result.unexpected_keys):
+                raise RuntimeError(
+                    f"RRT checkpoint mismatch: missing={result.missing_keys[:8]} unexpected={result.unexpected_keys[:8]}"
+                )
         elif "dit" in payload:
             logger.warning("Loading legacy `dit` checkpoint into video expert only.")
             self.video_expert.load_state_dict(payload["dit"], strict=False)

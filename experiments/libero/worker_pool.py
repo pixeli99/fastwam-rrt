@@ -44,11 +44,28 @@ def write_worker_status(status_dir: Path, worker_id: str, status: str, message: 
     os.replace(temp_file, status_file)
 
 
+def read_text_retry(path: Path, attempts: int = 20, delay: float = 0.5) -> str:
+    """Read a file that other processes replace atomically; NFS-like mounts can raise ESTALE mid-replace."""
+    for attempt in range(attempts):
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
 def read_worker_status(status_dir: Path, worker_id: str) -> dict | None:
     status_file = status_dir / f"worker_{worker_id}.json"
     if not status_file.exists():
         return None
-    return json.loads(status_file.read_text(encoding="utf-8"))
+    for attempt in range(20):
+        try:
+            return json.loads(read_text_retry(status_file))
+        except (FileNotFoundError, json.JSONDecodeError):
+            if attempt == 19:
+                raise
+            time.sleep(0.5)
 
 
 def pop_task(
@@ -58,7 +75,7 @@ def pop_task(
     worker_id: str,
 ) -> tuple[str, int] | None:
     with task_queue_lock(lock_file):
-        lines = pending_file.read_text(encoding="utf-8").splitlines()
+        lines = read_text_retry(pending_file).splitlines()
         while lines:
             raw_task = lines.pop(0).strip()
             pending_file.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
@@ -73,7 +90,7 @@ def pop_task(
 def requeue_task(pending_file: Path, lock_file: Path, task: tuple[str, int]) -> bool:
     raw_task = f"{task[0]},{task[1]}"
     with task_queue_lock(lock_file):
-        lines = pending_file.read_text(encoding="utf-8").splitlines()
+        lines = read_text_retry(pending_file).splitlines()
         if raw_task in [line.strip() for line in lines]:
             return False
         lines.append(raw_task)
@@ -83,4 +100,4 @@ def requeue_task(pending_file: Path, lock_file: Path, task: tuple[str, int]) -> 
 
 def pending_task_count(pending_file: Path, lock_file: Path) -> int:
     with task_queue_lock(lock_file):
-        return sum(1 for line in pending_file.read_text(encoding="utf-8").splitlines() if line.strip())
+        return sum(1 for line in read_text_retry(pending_file).splitlines() if line.strip())

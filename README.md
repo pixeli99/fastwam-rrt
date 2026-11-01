@@ -23,10 +23,12 @@ The 30 video layers become 15 shared layers looped twice (CYCLE tying). The acti
 | `libero_uncond_2cam224_1e-4` | none | Wan2.2 | 5.00 B |
 | `libero_uncond_2cam224_1e-4_rrt_rec` | recursive | Stepwise | 2.50 B |
 | `libero_uncond_2cam224_1e-4_rrt_relax` | relaxed, LoRA r=512 per position | Average + truncated SVD | 3.84 B |
+| `libero_uncond_2cam224_1e-4_drop15` | none, 15 positions kept (control) | Stepwise layers | 2.50 B |
 
 - Code: `src/fastwam/models/wan22/rrt.py`. It is enabled by `model.rrt` in the task config.
 - Wan linear layers have biases. Relaxed positions also get an untied bias delta, initialized to the bias residual.
 - Norm weights and the AdaLN `modulation` stay tied, as in the paper.
+- `drop15` is the non-looped control for `rrt_rec`. Video and action blocks are paired per MoT position, so both experts keep the same 15 layers.
 - The RRT configs use batch 1 per GPU on 16 GPUs. This matches the global batch 16 of the release recipe (8 GPUs x 2).
 - `keep_last_checkpoints: 1` keeps only the latest weights and resume state.
 

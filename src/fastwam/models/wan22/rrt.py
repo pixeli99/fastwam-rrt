@@ -152,3 +152,25 @@ def apply_rrt(expert: nn.Module, num_loops: int, init: str, lora_rank: int, svd_
     }
     logger.info("Applied RRT to video expert: %s", info)
     return info
+
+
+@torch.no_grad()
+def apply_layer_drop(mot: nn.Module, keep: int) -> dict:
+    """Non-looped control: keep `keep` Stepwise-selected MoT positions in every expert (same layers RRT Stepwise ties).
+
+    Video and action blocks are paired per position in the MoT, so both experts shrink together.
+    """
+    num_layers = int(mot.num_layers)
+    sources = stepwise_sources(num_layers, keep)
+    for name in mot.expert_order:
+        expert = mot.mixtures[name]
+        expert.blocks = nn.ModuleList([expert.blocks[s] for s in sources])
+    mot.num_layers = keep
+    info = {
+        "layer_drop_from": num_layers,
+        "layer_drop_keep": keep,
+        "sources": sources,
+        "expert_params_after": {n: sum(p.numel() for p in mot.mixtures[n].parameters()) for n in mot.expert_order},
+    }
+    logger.info("Applied layer drop to MoT: %s", info)
+    return info

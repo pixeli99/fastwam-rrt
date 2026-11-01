@@ -72,3 +72,19 @@ def test_shared_grad_accumulates_both_positions():
     e.blocks[3].ffn(x).sum().backward()
     assert not torch.equal(g0, e.blocks[3].ffn[0].base.weight.grad)
     assert e.blocks[3].ffn[0].lora_A.grad is not None
+
+
+def test_layer_drop_keeps_stepwise_positions_in_all_experts():
+    from fastwam.models.wan22.rrt import apply_layer_drop
+
+    torch.manual_seed(0)
+    mot = nn.Module()
+    mot.mixtures = nn.ModuleDict({"video": Expert(n=30), "action": Expert(n=30, d=8, ffn=16)})
+    mot.expert_order = ["video", "action"]
+    mot.num_layers = 30
+    orig = {n: list(mot.mixtures[n].blocks) for n in mot.expert_order}
+    info = apply_layer_drop(mot, keep=15)
+    assert mot.num_layers == 15 and info["sources"] == stepwise_sources(30, 15)
+    for n in mot.expert_order:
+        assert len(mot.mixtures[n].blocks) == 15
+        assert all(b is orig[n][s] for b, s in zip(mot.mixtures[n].blocks, info["sources"]))

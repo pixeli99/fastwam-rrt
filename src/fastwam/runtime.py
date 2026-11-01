@@ -92,6 +92,7 @@ def create_fastwam(
     model_dtype: torch.dtype = torch.bfloat16,
     device: str = "cuda",
     rrt=None,
+    layer_drop=None,
 ):
     from .models.wan22.fastwam import FastWAM
 
@@ -172,6 +173,15 @@ def create_fastwam(
             # Eval builds a random model and overwrites it from the checkpoint; SVD would be wasted.
             svd_init=not bool(skip_dit_load_from_pretrain),
         )
+    if layer_drop is not None:
+        from .models.wan22.rrt import apply_layer_drop
+
+        if isinstance(layer_drop, DictConfig):
+            layer_drop = OmegaConf.to_container(layer_drop, resolve=True)
+        if rrt is not None:
+            raise ValueError("`rrt` and `layer_drop` are mutually exclusive.")
+        # Reuses `rrt_info` so load_checkpoint stays strict for the reshaped model.
+        model.rrt_info = apply_layer_drop(model.mot, keep=int(layer_drop["keep"]))
     return model
 
 

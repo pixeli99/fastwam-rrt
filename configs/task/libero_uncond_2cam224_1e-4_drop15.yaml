@@ -1,0 +1,36 @@
+# @package _global_
+# Non-looped control for rrt_rec: keep the 15 Stepwise-selected MoT positions (the layers rrt_rec ties), no weight sharing.
+# Video and action blocks are paired per position, so both experts drop to 15 layers.
+# Everything else reproduces the FastWAM LIBERO release recipe (train_zero1.sh 8 x batch 2 = global 16,
+# 10 epochs, lr 1e-4 cosine, wd 1e-2, action/video shift 5.0 as in the released checkpoint), run on 16 GPUs x batch 1.
+
+defaults:
+  - override /data: libero_2cam
+  - override /model: fastwam
+  - _self_
+
+batch_size: 1
+num_workers: 8
+
+model:
+  mot_checkpoint_mixed_attn: false
+  tokenizer_model_id: Wan-AI/Wan2.2-TI2V-5B
+  redirect_common_files: false
+  action_scheduler:
+    train_shift: 5.0
+    infer_shift: 5.0
+  layer_drop:
+    keep: 15
+
+lr_scheduler_type: "cosine"
+learning_rate: 1e-4
+num_epochs: 10
+max_steps: null
+log_every: 10
+save_every: 10000
+keep_last_checkpoints: 1
+eval_every: 200
+
+gradient_accumulation_steps: 1
+weight_decay: 1e-2
+resume: null

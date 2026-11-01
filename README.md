@@ -13,32 +13,6 @@ Official codebase for **Fast-WAM: Do World Action Models Need Test-time Future I
 
 This repository contains the training and evaluation code for FastWAM on LIBERO / RoboTwin.
 
-## Recursive video expert (this fork)
-
-This fork adds [Relaxed Recursive Transformers](https://arxiv.org/abs/2410.20672) (RRT) to the Wan2.2 video expert.
-The 30 video layers become 15 shared layers looped twice (CYCLE tying). The action expert is unchanged.
-
-| Task config | Tying | Init | Video expert params |
-| --- | --- | --- | ---: |
-| `libero_uncond_2cam224_1e-4` | none | Wan2.2 | 5.00 B |
-| `libero_uncond_2cam224_1e-4_rrt_rec` | recursive | Stepwise | 2.50 B |
-| `libero_uncond_2cam224_1e-4_rrt_relax` | relaxed, LoRA r=512 per position | Average + truncated SVD | 3.84 B |
-| `libero_uncond_2cam224_1e-4_drop15` | none, 15 positions kept (control) | Stepwise layers | 2.50 B |
-
-- Code: `src/fastwam/models/wan22/rrt.py`. It is enabled by `model.rrt` in the task config.
-- Wan linear layers have biases. Relaxed positions also get an untied bias delta, initialized to the bias residual.
-- Norm weights and the AdaLN `modulation` stay tied, as in the paper.
-- `drop15` is the non-looped control for `rrt_rec`. Video and action blocks are paired per MoT position, so both experts keep the same 15 layers.
-- The RRT configs use batch 1 per GPU on 16 GPUs. This matches the global batch 16 of the release recipe (8 GPUs x 2).
-- `keep_last_checkpoints: 1` keeps only the latest weights and resume state.
-
-```bash
-bash scripts/train_zero1.sh 16 task=libero_uncond_2cam224_1e-4_rrt_relax
-python -m pytest tests/test_rrt.py
-```
-
-Evaluation is the same as for FastWAM. Pass the RRT task name to `run_libero_manager.py`.
-
 ## What's New
 
 FastWAM is now faster, better suited to large-scale datasets, and more flexible

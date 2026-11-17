@@ -44,6 +44,8 @@ class Wan22Trainer:
         self.save_every = int(cfg.save_every)
         # Older weight/state snapshots beyond this count are deleted after each save (None keeps all).
         self.keep_last_checkpoints = cfg.get("keep_last_checkpoints", None)
+        # Extra weights-only snapshots (no optimizer state) kept outside the pruned weights dir; 0 = before training.
+        self.milestone_steps = sorted({int(s) for s in (cfg.get("milestone_steps", None) or [])})
         self.eval_every = int(cfg.eval_every)
         self.eval_num_inference_steps = int(cfg.eval_num_inference_steps)
         self.gradient_accumulation_steps = int(cfg.gradient_accumulation_steps)
@@ -596,6 +598,19 @@ class Wan22Trainer:
         model.save_checkpoint(ckpt_path, optimizer=None, step=self.global_step)
         return ckpt_path
 
+    def save_milestone(self):
+        self.accelerator.wait_for_everyone()
+        if self.accelerator.is_main_process:
+            milestone_dir = os.path.join(self.checkpoint_root, "milestones")
+            ensure_dir(milestone_dir)
+            path = os.path.join(milestone_dir, f"step_{self.global_step:06d}.pt")
+            if not os.path.exists(path):
+                tmp = path + ".tmp"
+                self.accelerator.unwrap_model(self.model).save_checkpoint(tmp, optimizer=None, step=self.global_step)
+                os.replace(tmp, path)
+                logger.info("[milestone] step=%d weights=%s", self.global_step, path)
+        self.accelerator.wait_for_everyone()
+
     def _save_trainer_state(self, state_path: str):
         state_file = os.path.join(state_path, "trainer_state.json")
         payload = {
@@ -688,6 +703,8 @@ class Wan22Trainer:
             raise ValueError("`max_steps` must be set before entering the while-step training loop.")
 
         logger.info("Starting training with max_steps=%d.", self.max_steps)
+        if self.global_step in self.milestone_steps:
+            self.save_milestone()
         data_iter = iter(self.train_loader)
         self.run_start_step = self.global_step
         self.run_start_time = time.perf_counter()
@@ -794,6 +811,9 @@ class Wan22Trainer:
                             if "action_l1" in metrics:
                                 eval_payload["eval/action_l1"] = float(metrics["action_l1"])
                             self._wandb_log(eval_payload)
+
+                    if self.global_step in self.milestone_steps:
+                        self.save_milestone()
 
                     if self.save_every > 0 and self.global_step % self.save_every == 0:
                         ckpt_info = self.save_checkpoint()

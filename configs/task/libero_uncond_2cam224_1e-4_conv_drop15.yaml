@@ -1,0 +1,37 @@
+# @package _global_
+# Conversion fine-tuning: start from the released FastWAM LIBERO checkpoint, apply Layer drop (keep the 15 Stepwise-selected MoT positions), fine-tune 5000 steps.
+# Recipe otherwise = libero_uncond_2cam224_1e-4_rrt_rec.yaml (lr 1e-4 cosine, 5% warmup, wd 1e-2, 16 GPUs x batch 1,
+# action/video shift 5.0). Weights-only milestones at 0 (right after conversion) / 200 / 1000 / 5000.
+
+defaults:
+  - override /data: libero_2cam
+  - override /model: fastwam
+  - _self_
+
+batch_size: 1
+num_workers: 8
+
+model:
+  mot_checkpoint_mixed_attn: false
+  tokenizer_model_id: Wan-AI/Wan2.2-TI2V-5B
+  redirect_common_files: false
+  action_scheduler:
+    train_shift: 5.0
+    infer_shift: 5.0
+  init_checkpoint: checkpoints/fastwam_release/libero_uncond_2cam224.pt
+  layer_drop:
+    keep: 15
+
+lr_scheduler_type: "cosine"
+learning_rate: 1e-4
+num_epochs: 10
+max_steps: 5000
+log_every: 10
+save_every: 2500
+keep_last_checkpoints: 1
+milestone_steps: [0, 200, 1000, 5000]
+eval_every: 200
+
+gradient_accumulation_steps: 1
+weight_decay: 1e-2
+resume: null

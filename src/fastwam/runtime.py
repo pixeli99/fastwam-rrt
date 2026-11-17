@@ -93,6 +93,7 @@ def create_fastwam(
     device: str = "cuda",
     rrt=None,
     layer_drop=None,
+    init_checkpoint: str | None = None,
 ):
     from .models.wan22.fastwam import FastWAM
 
@@ -160,6 +161,15 @@ def create_fastwam(
         loss_lambda_action=float(loss.get("lambda_action", 1.0)),
         compile_training_denoise=bool(compile_training_denoise),
     )
+    if init_checkpoint and not skip_dit_load_from_pretrain:
+        # Start from a trained FastWAM MoT checkpoint (full 30-layer model), then convert below.
+        # Eval builds with skip_dit_load_from_pretrain and loads its own converted checkpoint, so skip here.
+        payload = torch.load(str(init_checkpoint), map_location="cpu", mmap=True)
+        result = model.mot.load_state_dict(payload["mot"], strict=True)
+        if model.proprio_encoder is not None:
+            model.proprio_encoder.load_state_dict(payload["proprio_encoder"], strict=True)
+        logger.info("Loaded init checkpoint %s (step=%s) before conversion: %s", init_checkpoint, payload.get("step"), result)
+        del payload
     if rrt is not None:
         from .models.wan22.rrt import apply_rrt
 
